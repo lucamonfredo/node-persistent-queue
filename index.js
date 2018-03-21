@@ -185,7 +185,7 @@ function PersistentQueue(filename,batchSize) {
 	}) ;
 
 	// If a job is added, trigger_next event
-	this.on('add',function(job) {
+	this.on('add',function(key,job) {
 		if(self.empty) {
 			self.empty = false ;
 			if(self.debug) console.log('No longer empty') ;
@@ -230,7 +230,7 @@ PersistentQueue.prototype.open = function open() {
 		// Create and initialise tables if they doesnt exist
 		return new Promise(function(resolve,reject) {
 			query = " \
-			CREATE TABLE IF NOT EXISTS " + table + " (id INTEGER PRIMARY KEY ASC AUTOINCREMENT, job TEXT) ; \
+			CREATE TABLE IF NOT EXISTS " + table + " (id INTEGER PRIMARY KEY ASC AUTOINCREMENT, key TEXT, job TEXT) ; \
 			\
 			CREATE TABLE IF NOT EXISTS " + table_count + " (counter BIGINT) ; \
 			\
@@ -356,17 +356,17 @@ PersistentQueue.prototype.abort = function() {
  * @param {Object} job Object to be serialized and added to queue via JSON.stringify()
  * @return {PersistentQueue} Instance for method chaining
  */
-PersistentQueue.prototype.add = function(job) {
+PersistentQueue.prototype.add = function(key, job) {
 	var self = this ;
 
-	self.db.run("INSERT INTO " + table + " (job) VALUES (?)", JSON.stringify(job), function(err) {
+	self.db.run("INSERT INTO " + table + " (key, job) VALUES (?,?)", key, JSON.stringify(job), function(err) {
 		if(err)
 			throw err ;
 
 		// Increment our job length
 		self.length++ ;
 
-		self.emit('add',{ id:this.lastID, job: job }) ;
+		self.emit('add',{ id:this.lastID, key: key , job: job }) ;
 	});
 	return self ;
 } ;
@@ -433,13 +433,13 @@ PersistentQueue.prototype.getSqlite3 = function() {
 PersistentQueue.prototype.has = function(id) {
 	// First search the in-memory queue as its quick
 
-	return new Promise(function(reject,resolve) {
+	return new Promise(function(resolve,reject) {
 		for(var i=0;i<self.queue.length;i++) {
 			if(self.queue[i].id === id)
 				resolve(true) ;
 		}
 		// Now check the on-disk queue
-		this.db.get("SELECT id FROM " + table + " where id = ?", id, function(err, row) {
+		self.db.get("SELECT id FROM " + table + " where id = ?", id, function(err, row) {
 			if(err !== null)
 				reject(err) ;
 
@@ -448,6 +448,31 @@ PersistentQueue.prototype.has = function(id) {
 		}) ;
 	}) ;
 } ;
+
+/**
+ * Returns true if there is a job with 'key' still in queue, otherwise false
+ * @param {integer} key The job key to search for
+ * @return {Promise} Promise resolves true if the job id is still in the queue, otherwise false
+ */
+PersistentQueue.prototype.hasKey = function(key) {
+      // First search the in-memory queue as its quick
+    var self = this ;
+      return new Promise(function(resolve,reject) {
+              for(var i=0;i<self.queue.length;i++) {
+                      if(self.queue[i].key === key)
+                              resolve(true) ;
+              }
+              // Now check the on-disk queue
+              self.db.get("SELECT id FROM " + table + " where key = ?", key, function(err, row) {
+                      if(err) {
+                              reject(err) ;
+            }
+                      // Return true if there is a record, otherwise return false
+                      resolve(row !== undefined) ;
+              }) ;
+      }) ;
+} ;
+
 
 /**
  * Delete a job from the queue (if it exists)
@@ -504,7 +529,7 @@ function hydrateQueue(self,size) {
 			// Update our queue array (converting stored string back to object using JSON.parse
 			self.queue = jobs.map(function(job){
 				try {
-					return { id: job.id, job: JSON.parse(job.job)} ;
+					return { id: job.id, key: job.key, job: JSON.parse(job.job)} ;
 				} catch(err) {
 					reject(err) ;
 				}
