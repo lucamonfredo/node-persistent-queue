@@ -432,7 +432,7 @@ PersistentQueue.prototype.getSqlite3 = function() {
  */
 PersistentQueue.prototype.has = function(id) {
 	// First search the in-memory queue as its quick
-
+    var self=this;
 	return new Promise(function(resolve,reject) {
 		for(var i=0;i<self.queue.length;i++) {
 			if(self.queue[i].id === id)
@@ -456,21 +456,21 @@ PersistentQueue.prototype.has = function(id) {
  */
 PersistentQueue.prototype.hasKey = function(key) {
       // First search the in-memory queue as its quick
-    var self = this ;
-      return new Promise(function(resolve,reject) {
-              for(var i=0;i<self.queue.length;i++) {
-                      if(self.queue[i].key === key)
-                              resolve(true) ;
-              }
-              // Now check the on-disk queue
-              self.db.get("SELECT id FROM " + table + " where key = ?", key, function(err, row) {
-                      if(err) {
-                              reject(err) ;
-            }
-                      // Return true if there is a record, otherwise return false
-                      resolve(row !== undefined) ;
-              }) ;
-      }) ;
+	var self = this ;
+    return new Promise(function(resolve,reject) {
+		  for(var i=0;i<self.queue.length;i++) {
+				  if(self.queue[i].key === key)
+						  resolve(true) ;
+		  }
+		  // Now check the on-disk queue
+		  self.db.get("SELECT id FROM " + table + " where key = ?", key, function(err, row) {
+				  if(err) {
+						  reject(err) ;
+		}
+				  // Return true if there is a record, otherwise return false
+				  resolve(row !== undefined) ;
+		  }) ;
+    }) ;
 } ;
 
 
